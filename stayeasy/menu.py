@@ -22,25 +22,26 @@ while True:
         if choice == 1:
             records = va.validation_and_check()
         elif choice == 2:
-            create_booking(records)
+            va.create_booking(records)
         elif choice == 3:
-            pass
+            va.set_status()
         elif choice == 4:
-            pass
+            va.checkout_invoice()
         elif choice == 5:
-            pass
+            va.cancel_booking()
         elif choice == 6:
-            pass
+            va.get_booking()
         elif choice == 7:
-            pass
+            va.get_bookings_mob()
         elif choice == 8:
-            pass
+            va.occupancy_report()
         elif choice == 9:
-            pass
+            va.revenue_report()
         elif choice == 10:
-            pass
+            db.export_csv()
         elif choice == 11:
             print("Thanks!! Visit again.")
+            break
         else:
             print("Enter your selection from menu in the range of 1-11.")
 
