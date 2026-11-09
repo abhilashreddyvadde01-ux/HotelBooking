@@ -3,6 +3,7 @@ import database as db
 import pricing as pc
 from datetime import datetime, timedelta
 import exceptions as ex
+import os
 file = open("rooms.csv", 'r')
 rooms = file.readlines()
 roomdata = []
@@ -35,16 +36,16 @@ def validation_and_check():
             no_of_guests = int(input("Hey, how many of you are planning to stay: \n"))
     
             try:
-                check_in = input("Give check-in date in YYYY-MM-DD format: \n")
-                check_in = datetime.strptime(check_in, "%Y-%m-%d").date()
+                check_in = input("Give check-in date in DD-MM-YYYY format: \n")
+                check_in = datetime.strptime(check_in, "%d-%m-%Y").date()
                 
-            except ex.InvalidDateError as e:
-                print(f"Give proper check-in date in format : {e}")
+            except:
+                print("Give proper check-in date in format")
                 continue
 
             try:
-                check_out = input("Give check-out date in YYYY-MM-DD format: \n")
-                check_out = datetime.strptime(check_out, "%Y-%m-%d").date()
+                check_out = input("Give check-out date in DD-MM-YYYY format: \n")
+                check_out = datetime.strptime(check_out, "%d-%m-%Y").date()
                 
             except:
                 print("Give proper check-out date in format.")
@@ -112,8 +113,8 @@ def validation_and_check():
                         print("No Suite rooms available.")
                         continue
                     print(f"The free rooms are: {available_rooms}")
-                    print(f"Allocating you: {room_no}")
                     room_no = min(available_rooms)
+                    print(f"Allocating you: {room_no}")
                     return ['Suite', no_of_guests, check_in, check_out, room_no]
                 else:
                     print("Thank you for visiting!! Bye")
@@ -200,63 +201,140 @@ def create_booking(records):
     
 
 def set_status():
-    today = datetime.today().date().isoformat()
     print("Hi, Welcome to stayeasy!")
-    mob = input("Please enter your mobile number to validate: \n")
-    bookings = db.fetch_booking(mob)
-    if len(bookings) == 0:
-        print("Sorry, No active booking was found with this mobile number.")
-    else:
-        for row in bookings:
-            print(f"Booking ID: {row[0]}, Room No: {row[1]}, Room Type: {row[2]}, Check-in date: {row[3]}, Check-out date: {row[4]}, Number of guests: {row[5]}")
-            b_id = row[0]
 
-            if row[3] == today:
-                print("We will proceed with check-in process.")
-                db.set_confirm(b_id)
-                print("Checked-in successfully.")
+    try:
+        b_id = int(input("Please enter your booking ID: \n"))
+    except ValueError:
+        print("Invalid booking ID.")
+        return
+
+    booking = db.fetch_booking_by_id(b_id)
+
+    if booking is None:
+        print("Booking not found or booking is not confirmed.")
+        return
+
+    today = datetime.today().date().isoformat()
+
+    if booking[3] != today:
+        print("Check-in is allowed only on the check-in date.")
+        return
+
+    if db.set_confirm(b_id):
+        print("Checked-in successfully.")
+    else:
+        print("Unable to check in.")
 
         
 
 def checkout_invoice():
     print("Hi, Welcome to stayeasy!")
-    mob = input("Please enter your mobile number to validate: \n")
-    bookings = db.fetch_tocheckout(mob)
-    if len(bookings) == 0:
-        print("Sorry, No active booking was found with this mobile number.")
+
+    try:
+        b_id = int(input("Please enter your booking ID: \n"))
+    except ValueError:
+        print("Invalid booking ID.")
+        return
+
+    booking = db.fetch_tocheckout_by_id(b_id)
+
+    if booking is None:
+        print("Booking not found or booking is not checked in.")
+        return
+
+    room_no = booking[1]
+    room_type = booking[2]
+    check_in = booking[3]
+    check_out = booking[4]
+    no_of_guests = booking[5]
+    mob = booking[6]
+
+    guest_details = db.get_guest(mob)
+    guest_name = guest_details[0]
+    email = guest_details[1]
+
+    rows = db.get_invoice(mob, check_in)
+    net_pay = db.get_netprice_invoice(mob, check_in)
+
+    # Calculate discounts for displaying on the invoice
+    room_total = sum(row[1] for row in rows)
+
+    long_stay_discount = 0
+    if (datetime.strptime(check_out, "%Y-%m-%d").date() -
+            datetime.strptime(check_in, "%Y-%m-%d").date()).days >= 7:
+        long_stay_discount = room_total * 0.10
+
+    loyalty_discount = 0
+    if db.is_loyal_customer(mob):
+        loyalty_discount = (room_total - long_stay_discount) * 0.05
+
+    total_discount = long_stay_discount + loyalty_discount
+    total_gst = sum(row[5] for row in rows)
+
+    # Create invoices folder if it does not exist
+    os.makedirs("invoices", exist_ok=True)
+
+    invoice_path = f"invoices/BK{b_id:04d}.txt"
+
+    with open(invoice_path, 'w') as invoice:
+        invoice.write("========== STAYEASY HOTEL INVOICE ==========\n\n")
+
+        invoice.write(f"Booking ID: BK{b_id:04d}\n")
+        invoice.write(f"Guest Name: {guest_name}\n")
+        invoice.write(f"Mobile Number: {mob}\n")
+        invoice.write(f"Email: {email}\n")
+        invoice.write(f"Room Number: {room_no}\n")
+        invoice.write(f"Room Type: {room_type}\n")
+        invoice.write(f"Number of Guests: {no_of_guests}\n")
+        invoice.write(
+            f"Check-in Date: "
+            f"{datetime.strptime(check_in, '%Y-%m-%d').strftime('%d-%m-%Y')}\n"
+        )
+        invoice.write(
+            f"Check-out Date: "
+            f"{datetime.strptime(check_out, '%Y-%m-%d').strftime('%d-%m-%Y')}\n"
+        )
+
+        invoice.write("\n--------------- DAILY BREAKDOWN ---------------\n")
+
+        for row in rows:
+            date = datetime.strptime(row[0], "%Y-%m-%d").strftime("%d-%m-%Y")
+
+            invoice.write(f"\nDate: {date}\n")
+            invoice.write(f"Room Tariff: Rs. {row[1]:.2f}\n")
+            invoice.write(f"Extra Guest Charge: Rs. {row[2]:.2f}\n")
+            invoice.write(f"Breakfast Charge: Rs. {row[3]:.2f}\n")
+            invoice.write(f"Day Bill: Rs. {row[4]:.2f}\n")
+            invoice.write(f"GST: Rs. {row[5]:.2f}\n")
+            invoice.write(f"Daily Total: Rs. {row[6]:.2f}\n")
+
+        invoice.write("\n--------------- PAYMENT SUMMARY ---------------\n")
+        invoice.write(f"Room Charges: Rs. {room_total:.2f}\n")
+        invoice.write(f"Long-stay Discount: Rs. {long_stay_discount:.2f}\n")
+        invoice.write(f"Loyalty Discount: Rs. {loyalty_discount:.2f}\n")
+        invoice.write(f"Total Discount: Rs. {total_discount:.2f}\n")
+        invoice.write(f"Total GST: Rs. {total_gst:.2f}\n")
+        invoice.write(f"Final Amount Paid: Rs. {net_pay:.2f}\n")
+
+        invoice.write("\nThank you for staying with StayEasy!\n")
+
+    if db.set_checkedout(b_id):
+        print(f"Checkout successful. Invoice generated: {invoice_path}")
     else:
-        for row in bookings:
-            print(f"Booking ID: {row[0]}, Room No: {row[1]}, Room Type: {row[2]}, Check-in date: {row[3]}, Check-out date: {row[4]}, Number of guests: {row[5]}")
-            b_id = row[0]
-            check_in = row[3]
-
-        invoice = open(f"{b_id}.txt",'a+')
-        
-        print("We will proceed with check-out process.")
-        db.set_checkedout(b_id)
-        invoice.write(f"Booking ID: {b_id} Mobile Number: {mob}\n")
-        net = 0
-        for row in db.get_invoice(mob, check_in):
-            invoice.write(f"Date: {row[0]} Room Tariff: {row[1]} Extra Guest Charge: {row[2]} Breakfast Charge: {row[3]} Day Bill: {row[4]} GST Amount: {row[5]} Net Amount: {row[6]}\n")
-            
-
-        invoice.write(f"Net Payable Amount: {db.get_netprice_invoice(mob, check_in)}\n")
-        invoice.close()
+        print("Invoice generated, but checkout status could not be updated.")
 
 def cancel_booking():
     print("Hi, Welcome to stayeasy!")
-    mob = input("Please enter your mobile number to validate: \n")
-    if len(db.fetch_booking(mob)) == 0:
-        print("Sorry, No active booking was found with this mobile number.")
+    try:
+        b_id = int(input("Please enter your booking ID: \n"))
+    except ValueError:
+        print("Invalid booking ID.")
+        return
+    if db.cancel_booking(b_id):
+        print("Booking cancelled successfully.")
     else:
-        bookings = db.fetch_booking(mob)
-        for row in bookings:
-            print(f"Booking ID: {row[0]}, Room No: {row[1]}, Room Type: {row[2]}, Check-in date: {row[3]}, Check-out date: {row[4]}, Number of guests: {row[5]}")
-            b_id = row[0]
-
-            print("We will proceed with cancellation process.")
-        db.cancel_booking(mob, b_id)
-        print("Booking cancelled.")
+        print("Booking not found or cannot be cancelled.")
 
 def get_booking():
     print("Hi, Welcome to stayeasy!")
@@ -277,10 +355,10 @@ def get_bookings_mob():
             print(f"Booking ID: {row[0]}, Room No: {row[1]}, Room Type: {row[2]}, Check-in date: {row[3]}, Check-out date: {row[4]}, Number of guests: {row[5]}")
     
 def occupancy_report():
-    start = input("Enter the start date of the range to begin in YYYY-MM-DD format: \n")
-    end =  input("Enter the end date of the range to begin in YYYY-MM-DD format: \n")
-    start = datetime.strptime(start, "%Y-%m-%d").date()
-    end = datetime.strptime(end, "%Y-%m-%d").date()
+    start = input("Enter the start date of the range to begin in DD-MM-YYYY format: \n")
+    end =  input("Enter the end date of the range to begin in DD-MM-YYYY format: \n")
+    start = datetime.strptime(start, "%d-%m-%Y").date()
+    end = datetime.strptime(end, "%d-%m-%Y").date()
     if start > end:
         print("Start date cannot be after end date.")
         return

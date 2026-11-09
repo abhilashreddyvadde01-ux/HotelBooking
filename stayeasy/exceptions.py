@@ -1,13 +1,19 @@
 
-
-class InvalidDateError(Exception):
+class HotelException(Exception):
     pass
 
-class RoomUnavailableError(Exception):
+
+class InvalidDateError(HotelException):
     pass
 
-class InvalidStatusChangeError(Exception):
+
+class RoomUnavailableError(HotelException):
     pass
 
-class BookingNotFoundError(Exception):
+
+class InvalidStatusChangeError(HotelException):
+    pass
+
+
+class BookingNotFoundError(HotelException):
     pass

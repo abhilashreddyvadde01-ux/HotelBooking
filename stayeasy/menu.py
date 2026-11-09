@@ -47,7 +47,7 @@ while True:
         elif choice == 9:
             va.revenue_report()
         elif choice == 10:
-            db.export_csv()
+            db.export_bookings()
         elif choice == 11:
             print("Thanks!! Visit again.")
             break

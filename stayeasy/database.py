@@ -1,5 +1,7 @@
 import sqlite3
 from datetime import datetime
+import exceptions as ex
+import csv
 conn = sqlite3.Connection('stayeasy.db')
 curr = conn.cursor()
 
@@ -110,6 +112,27 @@ try:
         
         return curr.fetchall()
 
+    def fetch_booking_by_id(b_id):
+        curr.execute("""
+            SELECT booking_id, room_no, room_type, check_in,
+                check_out, num_guests
+            FROM bookings
+            WHERE booking_id = ? AND status = 'CONFIRMED'
+        """, (b_id,))
+
+        return curr.fetchone()
+
+
+    def fetch_tocheckout_by_id(b_id):
+        curr.execute("""
+            SELECT booking_id, room_no, room_type, check_in,
+                check_out, num_guests, mobile_number
+            FROM bookings
+            WHERE booking_id = ? AND status = 'CHECKED_IN'
+        """, (b_id,))
+
+        return curr.fetchone()
+
     def fetch_tocheckout(mob):
 
         curr.execute("""SELECT booking_id, room_no, room_type, check_in, check_out, num_guests
@@ -120,10 +143,15 @@ try:
         
 
     def set_confirm(b_id):
-        curr.execute("UPDATE bookings SET status = 'CHECKED_IN' WHERE booking_id = ? AND status = 'CONFIRMED'",(b_id, ))
-        conn.commit()
+        curr.execute(
+            "UPDATE bookings SET status = 'CHECKED_IN' WHERE booking_id = ? AND status = 'CONFIRMED'",(b_id,))
+        if curr.rowcount == 0:
+            raise ex.InvalidStatusChangeError(
+                f"Booking {b_id} cannot be checked in."
+            )
 
-        return curr.rowcount > 0
+        conn.commit()
+        return True
 
     def set_checkedout(b_id):
         curr.execute("UPDATE bookings SET status = 'CHECKED_OUT' WHERE booking_id = ? AND status = 'CHECKED_IN'",(b_id, ))
@@ -143,19 +171,26 @@ try:
     def get_netprice_invoice(mob, check_in):
         curr.execute("SELECT total_amount FROM bookings WHERE mobile_number = ? AND check_in = ?",(mob, check_in))
 
-        return curr.fetchall()[0]
-    def cancel_booking(mob, b_id):
+        return curr.fetchall()[0][0]
+    
+    def cancel_booking(b_id):
         today = datetime.today().date()
 
         curr.execute("""
-            SELECT check_in, total_amount FROM bookings WHERE mobile_number = ? AND booking_id = ? AND status = 'CONFIRMED' """, (mob, b_id))
+            SELECT check_in, total_amount
+            FROM bookings
+            WHERE booking_id = ? AND status = 'CONFIRMED'
+        """, (b_id,))
+
         row = curr.fetchone()
+
         if row is None:
-            print("Booking not found.")
-            return
+            raise ex.BookingNotFoundError(f"Booking {b_id} was not found or cannot be cancelled.")
+
         check_in = datetime.strptime(row[0], "%Y-%m-%d").date()
         total_amount = row[1]
         days = (check_in - today).days
+
         if days >= 7:
             cancellation_fee = 0
         elif days >= 2:
@@ -166,9 +201,11 @@ try:
         curr.execute("""
             UPDATE bookings
             SET status = 'CANCELLED', cancellation_fees = ?
-            WHERE mobile_number = ? AND booking_id = ?
-        """, (cancellation_fee, mob, b_id))
+            WHERE booking_id = ? AND status = 'CONFIRMED'
+        """, (cancellation_fee, b_id))
+
         conn.commit()
+        return curr.rowcount > 0
     
 
     def fetch_booking_mob(mob):
@@ -188,15 +225,18 @@ try:
         curr.execute("SELECT SUM(cancellation_fees) FROM bookings WHERE room_type = ? AND status = 'CANCELLED' ", (room_type, ))
         print(f"Savings from cancellations are: {curr.fetchall()[0]}")
 
-    def export_csv():
-        bookings_csv = open("bookings.csv",'w')
+    def export_bookings():
         curr.execute("SELECT * FROM bookings")
-        bookings_csv.write("booking_id,mobile_number,room_no,room_type,check_in,check_out,num_guests,status,cancellation_fees,gst_amount,total_amount\n")
-        for row in curr.fetchall():
-            bookings_csv.write(",".join(map(str, row)))
-            bookings_csv.write('\n')
-        bookings_csv.close()
-    conn.commit()
+
+        rows = curr.fetchall()
+        headers = [column[0] for column in curr.description]
+
+        with open("bookings_export.csv", "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+            writer.writerows(rows)
+
+        print("Bookings exported successfully to bookings_export.csv")
 
 
 
