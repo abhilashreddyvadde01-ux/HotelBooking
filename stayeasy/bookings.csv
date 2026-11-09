@@ -1,0 +1,2 @@
+booking_id,mobile_number,room_no,room_type,check_in,check_out,num_guests,status,cancellation_fees,gst_amount,total_amount
+1,8247473725,301,Suite,2026-11-11,2026-11-15,2,CONFIRMED,0,5040,38040

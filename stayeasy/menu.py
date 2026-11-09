@@ -1,7 +1,7 @@
 import database as db
 import validations_functions as va
 import models as m
-
+flag = False
 while True:
     try:
         print("""
@@ -18,11 +18,15 @@ while True:
             11. Exit
         """)
         print()
-        choice = int(input("Enter your choice from menu."))
+        choice = int(input("Enter your choice from menu: \n"))
         if choice == 1:
             records = va.validation_and_check()
+            flag = records is not None
         elif choice == 2:
-            va.create_booking(records)
+            if flag:
+                va.create_booking(records)
+            else:
+                print("Check for availability first.")
         elif choice == 3:
             va.set_status()
         elif choice == 4:
@@ -47,3 +51,4 @@ while True:
 
     except:
         print("Enter valid input.")
+        

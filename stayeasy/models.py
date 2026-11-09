@@ -26,8 +26,9 @@ class Room(ABC):
          pass
 
 class StandardRoom(Room):
-    def __init__(self, room_no, floor):
+    def __init__(self, room_no, floor, room_type):
         super().__init__(room_no, floor)
+        self.room_type = room_type
     
     def get_base_rate(self):
         return 2500
@@ -45,9 +46,10 @@ class StandardRoom(Room):
          pass
 
 class DeluxeRoom(Room):
-    def __init__(self, room_no, floor):
+    def __init__(self, room_no, floor, room_type):
         super().__init__(room_no, floor)
-    
+        self.room_type = room_type
+
     def get_base_rate(self):
         return 4000
     
@@ -64,8 +66,9 @@ class DeluxeRoom(Room):
              pass
 
 class SuiteRoom(Room):
-    def __init__(self, room_no, floor):
+    def __init__(self, room_no, floor, room_type):
         super().__init__(room_no, floor)
+        self.room_type = room_type
         
     def get_base_rate(self):
             return 7500

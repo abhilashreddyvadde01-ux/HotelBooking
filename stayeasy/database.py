@@ -1,5 +1,4 @@
 import sqlite3
-import validations_functions as va
 from datetime import datetime
 conn = sqlite3.Connection('stayeasy.db')
 curr = conn.cursor()
@@ -44,6 +43,7 @@ try:
     
 
     def check_availability(check_in, check_out, room_type):
+        import validations_functions as va
         result = []
         occupied_rooms_list = []
         curr.execute("""
@@ -75,63 +75,101 @@ try:
         conn.commit()
 
     def register_pricings(mobile_number, name, email, room_no, check_in, check_out, no_of_guests, start_date, room_tariff, extra_guest, breakfast_cost, day_bill, gst_amount, total_perday_bill):
-        curr.execute("INSERT INTO pricings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",(mobile_number, name, email, room_no, check_in, check_out, no_of_guests, start_date, room_tariff, extra_guest, breakfast_cost, day_bill, gst_amount, total_perday_bill))
-        conn.commit()
-
+        curr.execute("""INSERT INTO pricings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (mobile_number, name, email, room_no, check_in, check_out,
+        no_of_guests, start_date, room_tariff, extra_guest,
+        breakfast_cost, day_bill, gst_amount, total_perday_bill))
+        
     def register_booking(mobile_number, room_no, room_type, check_in, check_out, no_of_guests, status, cancellation_fees, net_pay, net_gst):
-        curr.execute("INSERT INTO bookings VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",(mobile_number, room_no, room_type, check_in, check_out, no_of_guests, status, cancellation_fees, net_pay, net_gst))
+        curr.execute("""INSERT INTO bookings (mobile_number, room_no, room_type, check_in,check_out, num_guests, status, cancellation_fees, gst_amount, total_amount)VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (mobile_number, room_no, room_type, check_in, check_out,
+      no_of_guests, status, cancellation_fees, net_gst, net_pay))
         conn.commit()
 
     def is_loyal_customer(mobile_number):
-        curr.execute("SELECT COUNT(*) FROM bookings WHERE guest_mobile = ?",(mobile_number, ))
+        curr.execute("""
+            SELECT COUNT(*) FROM bookings
+            WHERE mobile_number = ? AND status = 'CHECKED_OUT'""", (mobile_number,))
 
-        if int(curr.fetchall[0]) >= 3:
+        result = curr.fetchone()
+
+        if result[0] >= 3:
             return True
         else:
             return False
 
+    def get_guest(mobile_number):
+        curr.execute(
+            "SELECT name, email FROM guests WHERE mobile_number = ?",
+            (mobile_number,)
+        )
+        return curr.fetchone()
+
     def fetch_booking(mob):
-        today = datetime.today().date()
-        today = datetime.strptime(today, "%Y-%m-%d")
-        curr.execute("SELECT booking_id, room_no, room_type, check_in, check_out, num_guests FROM bookings WHERE mobile_number = ? AND check_in >= ? AND status = 'CONFIRMED", (mob, today))
-        res = curr.fetchall()
-        return res
+        today = datetime.today().date().isoformat()
+
+        curr.execute("SELECT booking_id, room_no, room_type, check_in, check_out, num_guests FROM bookings WHERE mobile_number = ? AND check_in >= ? AND status = 'CONFIRMED' ", (mob, today))
+        
+        return curr.fetchall()
 
     def fetch_tocheckout(mob):
-        today = datetime.today().date()
-        today = datetime.strptime(today, "%Y-%m-%d")
-        curr.execute("SELECT booking_id, room_no, room_type, check_in, check_out, num_guests FROM bookings WHERE mobile_number = ? AND check_in >= ? AND status = 'CHECKED-IN", (mob, today))
-        res = curr.fetchall()
-        return res
+
+        curr.execute("""SELECT booking_id, room_no, room_type, check_in, check_out, num_guests
+    FROM bookings WHERE mobile_number = ? AND status = 'CHECKED_IN'
+    """, (mob,))
+        
+        return curr.fetchall()
         
 
     def set_confirm(b_id):
-        curr.execute("UPDATE bookings SET status = 'CHECKED-IN' WHERE booking_id = ?",(b_id, ))
-        conn.commit
-
-    def set_checkedout(b_id):
-        curr.execute("UPDATE bookings SET status = 'CHECKED-OUT' WHERE booking_id = ?",(b_id, ))
+        curr.execute("UPDATE bookings SET status = 'CHECKED_IN' WHERE booking_id = ? AND status = 'CONFIRMED'",(b_id, ))
         conn.commit()
 
-    def get_invoice(mob, check_in):
-        curr.execute("SELECT name, mail, room_no, no_of_guests, current_date, room_tariff, extra_guest, breakfast_cost, day_bill, gst_amount, total_perday_bill FROM pricings WHERE mobile_number = ? AND check_in = ? AND status = 'CHECKED-IN' ",(mob,check_in))
-        rows = curr.fetchall()
-        return rows
+        return curr.rowcount > 0
 
+    def set_checkedout(b_id):
+        curr.execute("UPDATE bookings SET status = 'CHECKED_OUT' WHERE booking_id = ? AND status = 'CHECKED_IN'",(b_id, ))
+        conn.commit()
+
+        return curr.rowcount > 0
+
+    def get_invoice(mob, check_in):
+        curr.execute("""
+            SELECT "current_date", room_tariff, extra_guest,breakfast_cost, day_bill, gst_amount,total_perday_bill
+            FROM pricings
+            WHERE mobile_number = ? AND check_in = ?
+        """, (mob, check_in))
+
+        return curr.fetchall()
+
+    def get_netprice_invoice(mob, check_in):
+        curr.execute("SELECT total_amount FROM bookings WHERE mobile_number = ? AND check_in = ?",(mob, check_in))
+
+        return curr.fetchall()[0]
     def cancel_booking(mob, b_id):
         today = datetime.today().date()
-        today = datetime.strptime(today, "%Y-%m-%d")
-        curr.execute("SELECT check_in, total_amount FROM bookings WHERE mobile_number = ? AND booking_id = ?", (mob, b_id))
-        check_in = curr.fetchall()[0]
-        total_amount = curr.fetchall()[1]
-        if check_in - today >= 7:
+
+        curr.execute("""
+            SELECT check_in, total_amount FROM bookings WHERE mobile_number = ? AND booking_id = ? AND status = 'CONFIRMED' """, (mob, b_id))
+        row = curr.fetchone()
+        if row is None:
+            print("Booking not found.")
+            return
+        check_in = datetime.strptime(row[0], "%Y-%m-%d").date()
+        total_amount = row[1]
+        days = (check_in - today).days
+        if days >= 7:
             cancellation_fee = 0
-        elif check_in - today >= 2 and check_in - today <= 6:
-            cancellation_fee = total_amount/2
+        elif days >= 2:
+            cancellation_fee = total_amount / 2
         else:
             cancellation_fee = total_amount
 
-        curr.execute("UPDATE bookings SET status = 'CANCELLED', cancellation_fees = ? WHERE mobile_number = ? AND booking_id = ?", (cancellation_fee, mob, b_id))
+        curr.execute("""
+            UPDATE bookings
+            SET status = 'CANCELLED', cancellation_fees = ?
+            WHERE mobile_number = ? AND booking_id = ?
+        """, (cancellation_fee, mob, b_id))
+        conn.commit()
+    
 
     def fetch_booking_mob(mob):
         curr.execute("SELECT booking_id, room_no, room_type, check_in, check_out, num_guests FROM bookings WHERE mobile_number = ? ", (mob, ))
@@ -139,23 +177,23 @@ try:
         return res
 
     def occupy_report(date):
-        curr.execute("SELECT COUNT(*) FROM bookings WHERE ? >= check_in AND ? < check_out",(date, date))
-        num = curr.fetchall()[0]
-        return num
+        curr.execute("SELECT COUNT(*) FROM bookings WHERE ? >= check_in AND ? < check_out AND status NOT IN ('CANCELLED')",(date, date))
+        num = curr.fetchone()
+        return num[0]
 
     def get_revenue(room_type):
-        curr.execute("SELECT COUNT(*), SUM(total_amount), SUM(gst_amount) FROM bookings WHERE room_type = ? AND status = 'CHECKED-OUT' ", (room_type, ))
+        curr.execute("SELECT COUNT(*), SUM(total_amount), SUM(gst_amount) FROM bookings WHERE room_type = ? AND status = 'CHECKED_OUT' ", (room_type, ))
         for row in curr.fetchall():
             print(f"From {room_type} the total completed stays are: {row[0]}, Total revenue: {row[1]}, Total GST collected: {row[2]}")
         curr.execute("SELECT SUM(cancellation_fees) FROM bookings WHERE room_type = ? AND status = 'CANCELLED' ", (room_type, ))
         print(f"Savings from cancellations are: {curr.fetchall()[0]}")
 
     def export_csv():
-        bookings_csv = open("bookings.csv",'a+')
+        bookings_csv = open("bookings.csv",'w')
         curr.execute("SELECT * FROM bookings")
-        bookings_csv.write("booking_id,mobile_number,room_no,room_type,check_in,check_out,num_guests,status,cancellation_fees,gst_amount,total_amount")
+        bookings_csv.write("booking_id,mobile_number,room_no,room_type,check_in,check_out,num_guests,status,cancellation_fees,gst_amount,total_amount\n")
         for row in curr.fetchall():
-            bookings_csv.write(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10])
+            bookings_csv.write(",".join(map(str, row)))
             bookings_csv.write('\n')
         bookings_csv.close()
     conn.commit()
@@ -164,5 +202,6 @@ try:
 
 except Exception as e:
     print(f"The database error occured : {e}")
+
 
 
