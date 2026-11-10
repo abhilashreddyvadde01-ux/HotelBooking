@@ -216,7 +216,7 @@ def set_status():
         return
 
     today = datetime.today().date().isoformat()
-
+                                
     if booking[3] != today:
         print("Check-in is allowed only on the check-in date.")
         return
@@ -257,8 +257,9 @@ def checkout_invoice():
     rows = db.get_invoice(mob, check_in)
     net_pay = db.get_netprice_invoice(mob, check_in)
 
-    # Calculate discounts for displaying on the invoice
-    room_total = sum(row[1] for row in rows)
+    room_total = 0
+    for row in rows:
+        room_total += row[1]
 
     long_stay_discount = 0
     if (datetime.strptime(check_out, "%Y-%m-%d").date() -
@@ -270,17 +271,18 @@ def checkout_invoice():
         loyalty_discount = (room_total - long_stay_discount) * 0.05
 
     total_discount = long_stay_discount + loyalty_discount
-    total_gst = sum(row[5] for row in rows)
 
-    # Create invoices folder if it does not exist
+    total_gst = 0
+    for row in rows:
+        total_gst += row[5]
+
     os.makedirs("invoices", exist_ok=True)
-
     invoice_path = f"invoices/BK{b_id:04d}.txt"
 
     with open(invoice_path, 'w') as invoice:
         invoice.write("========== STAYEASY HOTEL INVOICE ==========\n\n")
 
-        invoice.write(f"Booking ID: BK{b_id:04d}\n")
+        invoice.write(f"Booking ID: BK{b_id}\n")
         invoice.write(f"Guest Name: {guest_name}\n")
         invoice.write(f"Mobile Number: {mob}\n")
         invoice.write(f"Email: {email}\n")
